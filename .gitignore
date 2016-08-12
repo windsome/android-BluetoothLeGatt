@@ -1,0 +1,8 @@
+.gradle/
+.idea/
+Application/Application.iml
+Application/build/
+android-BluetoothLeGatt.iml
+build/
+local.properties
+

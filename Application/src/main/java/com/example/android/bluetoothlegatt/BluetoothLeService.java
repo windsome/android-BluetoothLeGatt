@@ -29,9 +29,14 @@ import android.bluetooth.BluetoothProfile;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Binder;
+import android.os.Environment;
 import android.os.IBinder;
 import android.util.Log;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.security.Timestamp;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -47,6 +52,9 @@ public class BluetoothLeService extends Service {
     private String mBluetoothDeviceAddress;
     private BluetoothGatt mBluetoothGatt;
     private int mConnectionState = STATE_DISCONNECTED;
+
+    private ArrayList<byte[]> cacheData2 = new ArrayList<>();
+    private long cacheTime = 0;
 
     private static final int STATE_DISCONNECTED = 0;
     private static final int STATE_CONNECTING = 1;
@@ -146,6 +154,58 @@ public class BluetoothLeService extends Service {
                 final StringBuilder stringBuilder = new StringBuilder(data.length);
                 for(byte byteChar : data)
                     stringBuilder.append(String.format("%02X ", byteChar));
+                Log.i(TAG, "windsome1:"+ stringBuilder.toString());
+                Log.i(TAG, "windsome2:"+ new String(data));
+                //cacheData = cacheData + data;
+                long currTime = System.currentTimeMillis();
+                if ((currTime - cacheTime) > 100) {
+                    Log.i(TAG, "write cache to file! currTime="+currTime+", cacheTime="+cacheTime+", interval="+(currTime - cacheTime));
+                    /*StringBuilder hexBuilder = new StringBuilder();
+                    for (int i = 0; i < cacheData2.size(); i++) {
+                        byte[] item = cacheData2.get(i);
+                        for(byte byteChar : item)
+                            hexBuilder.append(String.format("%02X ", byteChar));
+                        //?? add \n to line end??
+                        hexBuilder.append("\n");
+                    }
+                    //?? add 2 \n to message end.
+                    hexBuilder.append("\n\n");*/
+
+                    // save cache data, and clear.
+                    if(Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)){
+                        File sdCardDir = Environment.getExternalStorageDirectory();//获取SDCard目录
+                        try {
+                            File saveFile1 = new File(sdCardDir, "ble_byte.txt");
+                            File saveFile2 = new File(sdCardDir, "ble_asci.txt");
+                            FileOutputStream fout1 = new FileOutputStream(saveFile1, true);
+                            FileOutputStream fout2 = new FileOutputStream(saveFile2, true);
+                            //FileOutputStream fout1 = openFileOutput("out_byte", MODE_APPEND);
+                            //FileOutputStream fout2 = openFileOutput("out_asci", MODE_APPEND);
+                            for (int i = 0; i < cacheData2.size(); i++) {
+                                byte[] item = cacheData2.get(i);
+                                StringBuilder hexBuilder = new StringBuilder();
+                                for(byte byteChar : item)
+                                    hexBuilder.append(String.format("%02X ", byteChar));
+                                fout1.write(hexBuilder.toString().getBytes());
+                                fout1.write("\n".getBytes());
+                                fout2.write(item);
+                            }
+                            fout1.write("\n\n".getBytes());
+                            fout2.write("\n\n".getBytes());
+                            fout1.close();
+                            fout2.close();
+                        } catch(Exception e){
+                            Log.e(TAG, "error:"+e);
+                            e.printStackTrace();
+                        }
+                    } else {
+                        Log.e(TAG, "sd card fail!");
+                    }
+                    cacheData2.clear();
+                }
+                cacheData2.add(data);
+                cacheTime = currTime;
+
                 intent.putExtra(EXTRA_DATA, new String(data) + "\n" + stringBuilder.toString());
             }
         }
@@ -294,7 +354,18 @@ public class BluetoothLeService extends Service {
             Log.w(TAG, "BluetoothAdapter not initialized");
             return;
         }
-        mBluetoothGatt.setCharacteristicNotification(characteristic, enabled);
+
+        if (!mBluetoothGatt.setCharacteristicNotification(characteristic, enabled)) {
+            Log.e(TAG, "setCharacteristicNotification fail! enabled="+enabled);
+        }
+
+        if ((UUID.fromString("0000fff4-0000-1000-8000-00805f9b34fb")).equals(characteristic.getUuid())) {
+            //mBluetoothGatt.writeCharacteristic(characteristic);
+            BluetoothGattDescriptor descriptor = characteristic.getDescriptor(
+                    UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"));
+            descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+            mBluetoothGatt.writeDescriptor(descriptor);
+        }
 
         // This is specific to Heart Rate Measurement.
         if (UUID_HEART_RATE_MEASUREMENT.equals(characteristic.getUuid())) {
