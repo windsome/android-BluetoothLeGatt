@@ -71,6 +71,8 @@ public class BluetoothLeService extends Service {
             cacheData2.clear();
             final Intent intent = new Intent(ACTION_DATA_AVAILABLE);
             intent.putExtra(EXTRA_DATA_SAME, isSame);
+            intent.putExtra(EXTRA_DATA, "");
+            sendBroadcast(intent);
         }
     };
     private static final int STATE_DISCONNECTED = 0;
@@ -180,14 +182,17 @@ public class BluetoothLeService extends Service {
 
                 //// write to file.
                 long currTime = System.currentTimeMillis();
-                if ((currTime - cacheTime) > 500) {
+                /*if ((currTime - cacheTime) > 500) {
                     Log.i(TAG, "write cache to file! currTime="+currTime+", cacheTime="+cacheTime+", interval="+(currTime - cacheTime));
                     boolean isSame = writeCacheToFile2 ();
                     cacheData2.clear();
                     intent.putExtra(EXTRA_DATA_SAME, isSame);
-                }
+                }*/
                 cacheData2.add(data);
                 cacheTime = currTime;
+                mToastHandler.removeCallbacks(mRunnable);
+                mToastHandler.postDelayed(mRunnable, 300);
+
             }
         }
         sendBroadcast(intent);

@@ -113,9 +113,9 @@ public class DeviceControlActivity extends Activity {
                 if (intent.hasExtra(BluetoothLeService.EXTRA_DATA_SAME)) {
                     boolean isSame = intent.getBooleanExtra(BluetoothLeService.EXTRA_DATA_SAME, false);
                     if (isSame)
-                        Toast.makeText(getApplicationContext(), "Y 上一个：正确", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(getApplicationContext(), "Y 正确", Toast.LENGTH_SHORT).show();
                     else
-                        Toast.makeText(getApplicationContext(), "N 上一个：失败\n注意：失败了", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(getApplicationContext(), "N 失败，失败，失败了\n注意：失败了", Toast.LENGTH_SHORT).show();
                 }
             }
         }
