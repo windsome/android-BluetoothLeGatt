@@ -33,12 +33,17 @@ import android.os.Environment;
 import android.os.IBinder;
 import android.util.Log;
 
+import org.apache.http.util.EncodingUtils;
+import org.apache.http.util.ExceptionUtils;
+
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.security.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import android.os.Handler;
 
 /**
  * Service for managing connection and data communication with a GATT server hosted on a
@@ -55,7 +60,19 @@ public class BluetoothLeService extends Service {
 
     private ArrayList<byte[]> cacheData2 = new ArrayList<>();
     private long cacheTime = 0;
-
+    private String mStandardBle = null;
+    Handler mToastHandler = new Handler();
+    Runnable mRunnable = new Runnable(){
+        @Override
+        public void run() {
+            long currTime = System.currentTimeMillis();
+            Log.i(TAG, "write cache to file! currTime="+currTime+", cacheTime="+cacheTime+", interval="+(currTime - cacheTime));
+            boolean isSame = writeCacheToFile2 ();
+            cacheData2.clear();
+            final Intent intent = new Intent(ACTION_DATA_AVAILABLE);
+            intent.putExtra(EXTRA_DATA_SAME, isSame);
+        }
+    };
     private static final int STATE_DISCONNECTED = 0;
     private static final int STATE_CONNECTING = 1;
     private static final int STATE_CONNECTED = 2;
@@ -70,6 +87,8 @@ public class BluetoothLeService extends Service {
             "com.example.bluetooth.le.ACTION_DATA_AVAILABLE";
     public final static String EXTRA_DATA =
             "com.example.bluetooth.le.EXTRA_DATA";
+    public final static String EXTRA_DATA_SAME =
+            "com.example.bluetooth.le.EXTRA_DATA_SAME";
 
     public final static UUID UUID_HEART_RATE_MEASUREMENT =
             UUID.fromString(SampleGattAttributes.HEART_RATE_MEASUREMENT);
@@ -151,65 +170,188 @@ public class BluetoothLeService extends Service {
             // For all other profiles, writes the data formatted in HEX.
             final byte[] data = characteristic.getValue();
             if (data != null && data.length > 0) {
+                //// print data received.
                 final StringBuilder stringBuilder = new StringBuilder(data.length);
                 for(byte byteChar : data)
                     stringBuilder.append(String.format("%02X ", byteChar));
-                Log.i(TAG, "windsome1:"+ stringBuilder.toString());
-                Log.i(TAG, "windsome2:"+ new String(data));
-                //cacheData = cacheData + data;
-                long currTime = System.currentTimeMillis();
-                if ((currTime - cacheTime) > 100) {
-                    Log.i(TAG, "write cache to file! currTime="+currTime+", cacheTime="+cacheTime+", interval="+(currTime - cacheTime));
-                    /*StringBuilder hexBuilder = new StringBuilder();
-                    for (int i = 0; i < cacheData2.size(); i++) {
-                        byte[] item = cacheData2.get(i);
-                        for(byte byteChar : item)
-                            hexBuilder.append(String.format("%02X ", byteChar));
-                        //?? add \n to line end??
-                        hexBuilder.append("\n");
-                    }
-                    //?? add 2 \n to message end.
-                    hexBuilder.append("\n\n");*/
+                //Log.i(TAG, "windsome1:"+ stringBuilder.toString());
+                //Log.i(TAG, "windsome2:"+ new String(data));
+                intent.putExtra(EXTRA_DATA, new String(data) + "\n" + stringBuilder.toString());
 
-                    // save cache data, and clear.
-                    if(Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)){
-                        File sdCardDir = Environment.getExternalStorageDirectory();//获取SDCard目录
-                        try {
-                            File saveFile1 = new File(sdCardDir, "ble_byte.txt");
-                            File saveFile2 = new File(sdCardDir, "ble_asci.txt");
-                            FileOutputStream fout1 = new FileOutputStream(saveFile1, true);
-                            FileOutputStream fout2 = new FileOutputStream(saveFile2, true);
-                            //FileOutputStream fout1 = openFileOutput("out_byte", MODE_APPEND);
-                            //FileOutputStream fout2 = openFileOutput("out_asci", MODE_APPEND);
-                            for (int i = 0; i < cacheData2.size(); i++) {
-                                byte[] item = cacheData2.get(i);
-                                StringBuilder hexBuilder = new StringBuilder();
-                                for(byte byteChar : item)
-                                    hexBuilder.append(String.format("%02X ", byteChar));
-                                fout1.write(hexBuilder.toString().getBytes());
-                                fout1.write("\n".getBytes());
-                                fout2.write(item);
-                            }
-                            fout1.write("\n\n".getBytes());
-                            fout2.write("\n\n".getBytes());
-                            fout1.close();
-                            fout2.close();
-                        } catch(Exception e){
-                            Log.e(TAG, "error:"+e);
-                            e.printStackTrace();
-                        }
-                    } else {
-                        Log.e(TAG, "sd card fail!");
-                    }
+                //// write to file.
+                long currTime = System.currentTimeMillis();
+                if ((currTime - cacheTime) > 500) {
+                    Log.i(TAG, "write cache to file! currTime="+currTime+", cacheTime="+cacheTime+", interval="+(currTime - cacheTime));
+                    boolean isSame = writeCacheToFile2 ();
                     cacheData2.clear();
+                    intent.putExtra(EXTRA_DATA_SAME, isSame);
                 }
                 cacheData2.add(data);
                 cacheTime = currTime;
-
-                intent.putExtra(EXTRA_DATA, new String(data) + "\n" + stringBuilder.toString());
             }
         }
         sendBroadcast(intent);
+    }
+
+    private boolean writeCacheToFile ()
+    {
+        /*StringBuilder hexBuilder = new StringBuilder();
+        for (int i = 0; i < cacheData2.size(); i++) {
+            byte[] item = cacheData2.get(i);
+            for(byte byteChar : item)
+                hexBuilder.append(String.format("%02X ", byteChar));
+            //?? add \n to line end??
+            hexBuilder.append("\n");
+        }
+        //?? add 2 \n to message end.
+        hexBuilder.append("\n\n");*/
+
+        // save cache data, and clear.
+
+        if(Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)){
+            File sdCardDir = Environment.getExternalStorageDirectory();//获取SDCard目录
+            try {
+                File saveFile1 = new File(sdCardDir, "ble_byte.txt");
+                File saveFile2 = new File(sdCardDir, "ble_asci.txt");
+                FileOutputStream fout1 = new FileOutputStream(saveFile1, true);
+                FileOutputStream fout2 = new FileOutputStream(saveFile2, true);
+                //FileOutputStream fout1 = openFileOutput("out_byte", MODE_APPEND);
+                //FileOutputStream fout2 = openFileOutput("out_asci", MODE_APPEND);
+                for (int i = 0; i < cacheData2.size(); i++) {
+                    byte[] item = cacheData2.get(i);
+                    StringBuilder hexBuilder = new StringBuilder();
+                    for(byte byteChar : item)
+                        hexBuilder.append(String.format("%02X ", byteChar));
+                    fout1.write(hexBuilder.toString().getBytes());
+                    fout1.write("\n".getBytes());
+                    fout2.write(item);
+                }
+                fout1.write("\n\n".getBytes());
+                fout2.write("\n\n".getBytes());
+                fout1.close();
+                fout2.close();
+            } catch(Exception e){
+                Log.e(TAG, "error:"+e);
+                e.printStackTrace();
+                return false;
+            }
+        } else {
+            Log.e(TAG, "sd card fail!");
+        }
+
+        return true;
+    }
+    private boolean writeCacheToFile2 ()
+    {
+        if(Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)){
+            File sdCardDir = Environment.getExternalStorageDirectory();//获取SDCard目录
+            try {
+                boolean isSame = false;
+                //File saveFile1 = new File(sdCardDir, "ble_byte.txt");
+                File saveFile2 = new File(sdCardDir, "ble_asci.txt");
+                //FileOutputStream fout1 = new FileOutputStream(saveFile1, true);
+                FileOutputStream fout2 = new FileOutputStream(saveFile2, true);
+                //FileOutputStream fout1 = openFileOutput("out_byte", MODE_APPEND);
+                //FileOutputStream fout2 = openFileOutput("out_asci", MODE_APPEND);
+                StringBuilder hexBuilder = new StringBuilder();
+                for (int i = 0; i < cacheData2.size(); i++) {
+                    byte[] item = cacheData2.get(i);
+                    for(byte byteChar : item)
+                        hexBuilder.append(String.format("%02X ", byteChar));
+                    //?? add \n to line end??
+                    hexBuilder.append("\n");
+                    fout2.write(item);
+                }
+                //fout1.write(hexBuilder.toString().getBytes());
+                fout2.write("\nBinary:\n".getBytes());
+                fout2.write(hexBuilder.toString().getBytes());
+                // check with standard cardiochek_ble file.
+                if (mStandardBle == null) {
+                    mStandardBle = getStandardFile ();
+                    if (mStandardBle != null)
+                        mStandardBle = mStandardBle.replaceAll("[\\t\\n\\r]", "");
+                }
+                if (mStandardBle != null && !mStandardBle.equals("")) {
+                    // compare file.
+                    String hexStr = hexBuilder.toString();
+                    hexStr = hexStr.replaceAll("[\\t\\n\\r]", "");
+                    if (mStandardBle.equalsIgnoreCase(hexStr)) {
+                        fout2.write("\nSAME AS cardiochek_ble\n".getBytes());
+                        Log.i(TAG, "SAME AS cardiochek_ble");
+                        isSame = true;
+                    } else {
+                        fout2.write("\nDIFF WITH cardiochek_ble\n".getBytes());
+                        Log.i(TAG, "nDIFF WITH cardiochek_ble");
+                    }
+                } else {
+                    fout2.write("\nNO cardiochek_ble\n".getBytes());
+                    Log.i(TAG, "NO cardiochek_ble");
+                }
+                //fout1.write("\n\n".getBytes());
+                fout2.write("\n\n".getBytes());
+
+                //fout1.close();
+                fout2.close();
+                return isSame;
+            } catch(Exception e){
+                Log.e(TAG, "error:"+e);
+                e.printStackTrace();
+                return false;
+            }
+        } else {
+            Log.e(TAG, "sd card fail!");
+        }
+
+        return false;
+    }
+
+    private String getStandardFile() {
+        String sdcardPath = "";
+        if(Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
+            File sdCardDir = Environment.getExternalStorageDirectory();//获取SDCard目录
+            sdcardPath = sdCardDir.getPath();
+        }
+        String standardFile = findFile(sdcardPath, "cardiochek_ble");
+        if (standardFile == null) {
+            standardFile = findFile(sdcardPath + "/Downloads", "cardiochek_ble");
+        }
+        if (standardFile == null) {
+            Log.w(TAG, "no cardiochek_ble file");
+            return null;
+        }
+
+        try {
+            File file = new File(standardFile);
+            FileInputStream fis = new FileInputStream(file);
+            int length = fis.available();
+            byte[] buffer = new byte[length];
+            fis.read(buffer);
+            String res = EncodingUtils.getString(buffer, "UTF-8");
+            fis.close();
+            return res;
+        } catch (Exception e) {
+            Log.e(TAG, "read cardiochek_ble fail!");
+        }
+        return null;
+    }
+
+
+    private String findFile (String folder, String keyword) {
+        File file = new File(folder);
+        if (!file.isDirectory()) {
+            return null;
+        }
+        if (keyword.equals("")) {
+            return null;
+        }
+        File[] files = new File(file.getPath()).listFiles();
+
+        for (File f : files) {
+            if (f.getName().indexOf(keyword) >= 0) {
+                return f.getPath();
+            }
+        }
+        return null;
     }
 
     public class LocalBinder extends Binder {
@@ -361,10 +503,16 @@ public class BluetoothLeService extends Service {
 
         if ((UUID.fromString("0000fff4-0000-1000-8000-00805f9b34fb")).equals(characteristic.getUuid())) {
             //mBluetoothGatt.writeCharacteristic(characteristic);
-            BluetoothGattDescriptor descriptor = characteristic.getDescriptor(
-                    UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"));
-            descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-            mBluetoothGatt.writeDescriptor(descriptor);
+            List<BluetoothGattDescriptor> descs = characteristic.getDescriptors();
+            for (int i = 0; i < descs.size(); i++) {
+                BluetoothGattDescriptor desc = descs.get(i);
+                desc.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+                Log.d(TAG, "writeDescriptor notify, uuid=" + desc.getUuid().toString());
+                mBluetoothGatt.writeDescriptor(desc);
+            }
+            //BluetoothGattDescriptor descriptor = characteristic.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"));
+            //descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+            //mBluetoothGatt.writeDescriptor(descriptor);
         }
 
         // This is specific to Heart Rate Measurement.

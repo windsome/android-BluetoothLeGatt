@@ -34,6 +34,7 @@ import android.view.View;
 import android.widget.ExpandableListView;
 import android.widget.SimpleExpandableListAdapter;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -109,6 +110,13 @@ public class DeviceControlActivity extends Activity {
                 displayGattServices(mBluetoothLeService.getSupportedGattServices());
             } else if (BluetoothLeService.ACTION_DATA_AVAILABLE.equals(action)) {
                 displayData(intent.getStringExtra(BluetoothLeService.EXTRA_DATA));
+                if (intent.hasExtra(BluetoothLeService.EXTRA_DATA_SAME)) {
+                    boolean isSame = intent.getBooleanExtra(BluetoothLeService.EXTRA_DATA_SAME, false);
+                    if (isSame)
+                        Toast.makeText(getApplicationContext(), "Y 上一个：正确", Toast.LENGTH_SHORT).show();
+                    else
+                        Toast.makeText(getApplicationContext(), "N 上一个：失败\n注意：失败了", Toast.LENGTH_SHORT).show();
+                }
             }
         }
     };
